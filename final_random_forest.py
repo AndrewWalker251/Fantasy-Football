@@ -15,7 +15,7 @@ import time
 
 week = 25
 file  = 'fpl5.csv'
-#dataset = pd.read_csv(file)
+
 #dataset.sort_values(['name','gw'], inplace=True)
 #trees = 10
 
@@ -46,8 +46,6 @@ total, Price = Main_price(dataset,regressor,x_next_game, x_try_one,gameweek)
 t2 = time.time()
 FF_str, FF_def, FF_mid,FF_str2, FF_def2, FF_mid2,FF_str3, FF_def3, FF_mid3,keepers_price, defenders_price, mid_price, striker_price = create_formations(Price)
 
-
-
 defo = calculateOptions_single(defenders_price, FF_def)
 mido = calculateOptions_single(mid_price, FF_mid)
 striko =  calculateOptions_single(striker_price, FF_str)
@@ -58,13 +56,38 @@ defo3 = calculateOptions_single(defenders_price, FF_def3)
 mido3 = calculateOptions_single(mid_price, FF_mid3)
 striko3 =  calculateOptions_single(striker_price, FF_str3)
 
-result = results(defo,mido3,striko2,keepers_price)
-result1 = results(defo,mido,striko3,keepers_price)
-result2 = results(defo2,mido2,striko2,keepers_price)
-result3 = results(defo2,mido3,striko,keepers_price)
-result4 = results(defo2,mido,striko3,keepers_price)
-result5 = results(defo3,mido,striko2,keepers_price)
-result6 = results(defo3,mido2,striko,keepers_price)
+dataset_pure = pd.read_csv(file)
+dataset_pure = dataset_pure[dataset_pure.gw == week]
+dataset_pure = dataset_pure[['name','pos','current_price']]
+defen = dataset_pure.loc[(dataset_pure['pos'] == 'DEF')]
+mid = dataset_pure.loc[(dataset_pure['pos'] == 'MID')]
+strik = dataset_pure.loc[(dataset_pure['pos'] == 'FOR')]
+
+defen = cheapest3(defen)
+mid= cheapest3(mid)
+strik = cheapest3(strik)
+
+subs, budget = maximum_r(2,0,1,defen,mid,strik)
+result = results(defo,mido3,striko2,keepers_price,budget)# 3-5-2  (2def 1str)
+
+subs, budget = maximum_r(2,1,0,defen,mid,strik)
+result1 = results(defo,mido2,striko3,keepers_price,budget)# 3-4-3 (2def 1mid)
+
+subs, budget = maximum_r(1,1,1,defen,mid,strik)
+result2 = results(defo2,mido2,striko2,keepers_price,budget)#4-4-2 (1def 1mid 1stri)
+
+subs, budget = maximum_r(1,0,2,defen,mid,strik)
+result3 = results(defo2,mido3,striko,keepers_price,budget)#4-5-1 (1def 2strik)
+
+subs, budget = maximum_r(1,2,0,defen,mid,strik)
+result4 = results(defo2,mido,striko3,keepers_price,budget)#4-3-3 (1def, 2mid)
+
+subs, budget = maximum_r(0,2,1,defen,mid,strik)
+result5 = results(defo3,mido,striko2,keepers_price,budget)#5-3-2 (2mid, 1str)
+
+subs, budget = maximum_r(0,1,2,defen,mid,strik)
+result6 = results(defo3,mido2,striko,keepers_price,budget)#5-4-1 (1mid,2str)
+
 
 print(result['points'][0])
 print(result1['points'][0])
@@ -343,7 +366,7 @@ def calculateOptions_single(pri, formation):
     options= options[0:10]     
     return options   
 
-def results(defo,mido,striko,keepers_price):
+def results(defo,mido,striko,keepers_price, budget):
     result = []
     defo = defo[0:10]
     mido = mido[0:10]
@@ -360,11 +383,67 @@ def results(defo,mido,striko,keepers_price):
     
     result = pd.DataFrame(result, columns=['cost','points','formation'])
     
+    
     # limit depends on formation... 
-    result = result[result.cost < 835]
+    result = result[result.cost < budget]
     result = result.sort_values(by=['points'], ascending=False)
     result.reset_index(inplace=True)
     return result
+
+#get cheapest 3
+def cheapest3(defen):
+    defen.sort_values(by=['current_price'], ascending=True, inplace=True) 
+    defen.reset_index(drop=True,inplace=True)
+    defen = defen[0:3]
+    return defen
+
+
+#calculate the maximum total price for each formation
+
+def maximum_r(a,b,c,defen,mid,strik):
+    subs_cost = 0
+    subs = []
+    if(a==0):
+        subs_cost = 0
+    else:
+        if(a ==1):
+            subs_cost = defen['current_price'][a-1]
+            subs.append(defen['name'][a-1])
+        else:
+            subs_cost = defen['current_price'][a-1] + defen['current_price'][a-2]
+            subs.append(defen['name'][a-1])
+            subs.append(defen['name'][a-2])
+    
+    if(b==0):
+        subs_cost = subs_cost + 0
+    else:
+        if(b ==1):
+            subs_cost = subs_cost + mid['current_price'][b-1]
+            subs.append(mid['name'][b-1])
+        else:
+            subs_cost = subs_cost + mid['current_price'][b-1] + mid['current_price'][b-2]  
+            subs.append(mid['name'][b-1])
+            subs.append(mid['name'][b-2])
+            
+    if(c==0):
+            subs_cost = subs_cost + 0
+    else:
+        if(c ==1):
+            subs_cost = subs_cost + strik['current_price'][c-1]
+            subs.append(strik['name'][c-1])
+        else:
+            subs_cost = subs_cost + strik['current_price'][c] + strik['current_price'][c-2] 
+            subs.append(strik['name'][c-1])
+            subs.append(strik['name'][c-2])
+    
+    budget = 1000-subs_cost        
+    return(subs, budget)
+       
+            
+            
+
+
+
 
 
 
@@ -403,11 +482,6 @@ querky = pd.read_csv(r'C:\Users\Andrew\PycharmProjects\tensorflow\Ex_Files_Tenso
 
 
 
-
-
-
-
-
 #save to file the X  and y so i can use them with tensorflow. 
 frame_save = pd.DataFrame(X_train)
 frame_save.to_csv(path_or_buf=r'C:\Users\Andrew\PycharmProjects\tensorflow\Ex_Files_TensorFlow\Ex_Files_TensorFlow\Fantasy one\input_train.csv')
@@ -418,24 +492,6 @@ frame_save = pd.DataFrame(X_test)
 frame_save.to_csv(path_or_buf=r'C:\Users\Andrew\PycharmProjects\tensorflow\Ex_Files_TensorFlow\Ex_Files_TensorFlow\Fantasy one\input_test.csv')
 frame_save_y = pd.DataFrame(y_test)
 frame_save_y.to_csv(path_or_buf=r'C:\Users\Andrew\PycharmProjects\tensorflow\Ex_Files_TensorFlow\Ex_Files_TensorFlow\Fantasy one\output_test.csv')
-
-
-
-# Splitting the dataset into the Training set and Test set
-"""from sklearn.cross_validation import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 0)"""
-
-# Feature Scaling
-"""from sklearn.preprocessing import StandardScaler
-sc_X = StandardScaler()
-X_train = sc_X.fit_transform(X_train)
-X_test = sc_X.transform(X_test)
-sc_y = StandardScaler()
-y_train = sc_y.fit_transform(y_train)"""
-
-# Fitting the Regression Model to the dataset
-# Create your regressor here
-
 
 
 predicted_test = regressor.predict(X_test)
@@ -453,73 +509,11 @@ print(test_score)
 print(spearman)
 #print(pearson)
 
-
 #either tensorflow or randomforest
 y_next_week_points = pd.read_csv("tensorflow.csv")
-
-
-
-
-
 
 #for tensr
 y_try_one['point'] = y_next_week_points['0']
 point = pd.DataFrame(y_try_one)
 total_point= point[['id','point']]
-
-
-#p = pd.DataFrame(y_next_week_points) 
-#dataset_t = pd.read_csv('fpl2.csv')
-#remove any row with Nan in mins.ie all future games
-
-
-        
-        
-        tc = pri.loc[pri['id'] ==form[0]]    
-        tc1 = pri.loc[pri['id'] ==form[1]]
-        tc2 = pri.loc[pri['id'] ==form[2]]
-        tc3 = pri.loc[pri['id'] ==form[3]]
-        
-        
-        total_cost = tc['price'][tc.index[0]] + tc1['price'][tc1.index[0]] + tc2['price'][tc2.index[0]] + tc3['price'][tc3.index[0]]
-        total_points = tc['point'][tc.index[0]] + tc1['point'][tc1.index[0]] + tc2['point'][tc2.index[0]] + tc3['point'][tc3.index[0]]
-        names = [tc['name'],tc1['name'],tc2['name'],tc3['name']]
-        #shouldn't be using integers here should be floats.      
-        if(total_points > 0.3):
-            df2 = [total_cost,total_points, form, names]
-            df3.append(df2)
-    
-    options = pd.DataFrame(df3,columns = ['price','points','formation','names'] )
-    options.sort_values(by=['points'], ascending=False, inplace=True) 
-    options.reset_index(inplace=True)
-    options= options[0:10]     
-    
-    return options   
-
-def calculateOptionsstr(pri, formation):
-
-    df3 = []
-    for form in formation:
-
-        tc = pri.loc[pri['id'] ==form[0]]    
-        tc1 = pri.loc[pri['id'] ==form[1]]
-        total_cost = tc['price'][tc.index[0]] + tc1['price'][tc1.index[0]]
-        total_points = tc['point'][tc.index[0]] + tc1['point'][tc1.index[0]]
-        name = [tc['name'], tc1['name']]
-        #shouldn't be using integers here should be floats.      
-        
-        df2 = [total_cost,total_points, form, name]
-        df3.append(df2)
-    
-    options = pd.DataFrame(df3,columns = ['price','points','formation','names'] )
-    options.sort_values(by=['points'], ascending=False, inplace=True) 
-    options.reset_index(inplace=True)  
-    options= options[0:10]      
-    return options
-
-
-
-
-
-
 
