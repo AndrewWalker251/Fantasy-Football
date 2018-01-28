@@ -17,16 +17,14 @@ week = 25
 file  = 'fpl5.csv'
 
 #dataset.sort_values(['name','gw'], inplace=True)
-#trees = 10
-
-trees = 500
- 
+trees = 25
+# prepare the data 
 X,y,x_try_one, dataset_reduce, gameweek, x_next_game, dataset = Main_run(file,week)
-
+#run the model
 from sklearn.ensemble import RandomForestRegressor
 regressor = RandomForestRegressor(n_estimators = trees)
 regressor.fit(X,y)
-
+#option to run SVM model
 from sklearn.svm import SVR
 regressor = SVR(kernel = 'rbf')
 regressor.fit(X, y)
@@ -38,14 +36,12 @@ grid_search = GridSearchCV(estimator = regressor, param_grid = parameters)
 grid_search = grid_search.fit(X, y)
 best_parameters = grid_search.best_params_
 
-
-
+#use model to maximise best team
 total, Price = Main_price(dataset,regressor,x_next_game, x_try_one,gameweek)
 
-
-t2 = time.time()
+#create all combinations of players
 FF_str, FF_def, FF_mid,FF_str2, FF_def2, FF_mid2,FF_str3, FF_def3, FF_mid3,keepers_price, defenders_price, mid_price, striker_price = create_formations(Price)
-
+#calculate the points for all combinations
 defo = calculateOptions_single(defenders_price, FF_def)
 mido = calculateOptions_single(mid_price, FF_mid)
 striko =  calculateOptions_single(striker_price, FF_str)
@@ -56,55 +52,55 @@ defo3 = calculateOptions_single(defenders_price, FF_def3)
 mido3 = calculateOptions_single(mid_price, FF_mid3)
 striko3 =  calculateOptions_single(striker_price, FF_str3)
 
+#find the cheapest players to have as subs
 dataset_pure = pd.read_csv(file)
 dataset_pure = dataset_pure[dataset_pure.gw == week]
 dataset_pure = dataset_pure[['name','pos','current_price']]
 defen = dataset_pure.loc[(dataset_pure['pos'] == 'DEF')]
 mid = dataset_pure.loc[(dataset_pure['pos'] == 'MID')]
 strik = dataset_pure.loc[(dataset_pure['pos'] == 'FOR')]
+keep = dataset_pure.loc[(dataset_pure['pos'] == 'GK')]
 
 defen = cheapest3(defen)
 mid= cheapest3(mid)
 strik = cheapest3(strik)
+keep = cheapest3(keep)
 
-subs, budget = maximum_r(2,0,1,defen,mid,strik)
+#find the best formation. 
+subs, budget = maximum_r(2,0,1,defen,mid,strik,keep)
 result = results(defo,mido3,striko2,keepers_price,budget)# 3-5-2  (2def 1str)
 
-subs, budget = maximum_r(2,1,0,defen,mid,strik)
+subs, budget = maximum_r(2,1,0,defen,mid,strik,keep)
 result1 = results(defo,mido2,striko3,keepers_price,budget)# 3-4-3 (2def 1mid)
 
-subs, budget = maximum_r(1,1,1,defen,mid,strik)
+subs, budget = maximum_r(1,1,1,defen,mid,strik,keep)
 result2 = results(defo2,mido2,striko2,keepers_price,budget)#4-4-2 (1def 1mid 1stri)
 
-subs, budget = maximum_r(1,0,2,defen,mid,strik)
+subs, budget = maximum_r(1,0,2,defen,mid,strik,keep)
 result3 = results(defo2,mido3,striko,keepers_price,budget)#4-5-1 (1def 2strik)
 
-subs, budget = maximum_r(1,2,0,defen,mid,strik)
+subs, budget = maximum_r(1,2,0,defen,mid,strik,keep)
 result4 = results(defo2,mido,striko3,keepers_price,budget)#4-3-3 (1def, 2mid)
 
-subs, budget = maximum_r(0,2,1,defen,mid,strik)
+subs, budget = maximum_r(0,2,1,defen,mid,strik,keep)
 result5 = results(defo3,mido,striko2,keepers_price,budget)#5-3-2 (2mid, 1str)
 
-subs, budget = maximum_r(0,1,2,defen,mid,strik)
+subs, budget = maximum_r(0,1,2,defen,mid,strik,keep)
 result6 = results(defo3,mido2,striko,keepers_price,budget)#5-4-1 (1mid,2str)
 
 
 print(result['points'][0])
 print(result1['points'][0])
-print(result2['points'][0])
+#print(result2['points'][0])
 print(result3['points'][0])
 print(result4['points'][0])
 print(result5['points'][0])
 print(result6['points'][0])
 
-
-
-
-print(result6['formation'][0])
+print(result5['formation'][0])
 t3 = time.time()
 total_time1 = t3-t2
 print(total_time1)
-
 
 
 def Main_run(file,week):    
@@ -172,15 +168,15 @@ def Price_make(dataset,regressor,x_next_game, x_try_one):
     
     dataset_t = dataset.dropna(subset =['mins'])
     dataset_t2 = dataset_t.drop_duplicates(subset='id', keep='last', inplace=False)
-    Price = dataset_t2[['price','id','pos','name']]
+    Price = dataset_t2[['price','id','pos','name','team']]
 
    # Price = pd.DataFrame(Price, columns = ['price','id','position','name'])
     Price = pd.merge(Price, total_point, on='id', how='outer')
 
     Price.sort_values(by=['point'], ascending=False, inplace=True)
-    Price.reset_index(inplace=True)
-    Price = Price[Price.point > 3]
-    
+    Price.reset_index(drop=True,inplace=True)
+    #Price = Price[Price.point > 2]
+
     return Price
 
 
@@ -261,9 +257,17 @@ def Encode_and_label(dataset_reduce, x_try):
     #we need to remove a couple of columns to avoid the dummy variable trap.. but which ones.
 def create_formations(Price):  
     defenders_price = Price.loc[(Price['pos'] == 'DEF')]
+    defenders_price.reset_index(drop=True,inplace=True)
+    defenders_price = defenders_price[0:15]
     mid_price = Price.loc[(Price['pos'] == 'MID')]
+    mid_price.reset_index(drop=True,inplace=True)
+    mid_price = mid_price[0:15]
     striker_price = Price.loc[(Price['pos'] =='FOR')]
+    striker_price.reset_index(drop=True,inplace=True)
+    striker_price = striker_price[0:15]
     keepers = Price.loc[(Price['pos'] == 'GK')]      
+    keepers.reset_index(drop=True,inplace=True)
+    keepers = keepers[0:15]
 
     FF_def= []
     FF_mid= []
@@ -297,51 +301,6 @@ def create_formations(Price):
         FF_str3.append(str)
     return (FF_str, FF_def, FF_mid,FF_str2, FF_def2, FF_mid2,FF_str3, FF_def3, FF_mid3, keepers,defenders_price,mid_price,striker_price)
 
-
-def calculateOptions(pri, formation):
-
-    df3 = []
-    for form in formation:
-
-        tc = pri.loc[pri['id'] ==form[0]]    
-        tc1 = pri.loc[pri['id'] ==form[1]]
-        tc2 = pri.loc[pri['id'] ==form[2]]
-        tc3 = pri.loc[pri['id'] ==form[3]]
-        total_cost = tc['price'][tc.index[0]] + tc1['price'][tc1.index[0]] + tc2['price'][tc2.index[0]] + tc3['price'][tc3.index[0]]
-        total_points = tc['point'][tc.index[0]] + tc1['point'][tc1.index[0]] + tc2['point'][tc2.index[0]] + tc3['point'][tc3.index[0]]
-        names = [tc['name'],tc1['name'],tc2['name'],tc3['name']]
-        #shouldn't be using integers here should be floats.      
-        if(total_points > 0.3):
-            df2 = [total_cost,total_points, form, names]
-            df3.append(df2)
-    
-    options = pd.DataFrame(df3,columns = ['price','points','formation','names'] )
-    options.sort_values(by=['points'], ascending=False, inplace=True) 
-    options.reset_index(inplace=True)
-    #options= options[0:10]     
-    
-    return options   
-
-def calculateOptionsstr(pri, formation):
-
-    df3 = []
-    for form in formation:
-
-        tc = pri.loc[pri['id'] ==form[0]]    
-        tc1 = pri.loc[pri['id'] ==form[1]]
-        total_cost = tc['price'][tc.index[0]] + tc1['price'][tc1.index[0]]
-        total_points = tc['point'][tc.index[0]] + tc1['point'][tc1.index[0]]
-        name = [tc['name'], tc1['name']]
-        #shouldn't be using integers here should be floats.      
-        
-        df2 = [total_cost,total_points, form, name]
-        df3.append(df2)
-    
-    options = pd.DataFrame(df3,columns = ['price','points','formation','names'] )
-    options.sort_values(by=['points'], ascending=False, inplace=True) 
-    options.reset_index(inplace=True)  
-    options= options[0:10]      
-    return options
 def calculateOptions_single(pri, formation):
 
     df3 = []
@@ -353,17 +312,19 @@ def calculateOptions_single(pri, formation):
         tc.reset_index(drop=True,inplace=True)
         total_cost = 0
         total_points = 0
+        teams=[]
         names = []
         for player in range(0,len(form)):
             total_cost = total_cost + tc['price'][player]
             total_points = total_points + tc['point'][player]
-            names.append(tc['name'][player]) 
-        df2 = [total_cost,total_points, form, names]
+            names.append(tc['name'][player])
+            teams.append(tc['team'][player])
+        df2 = [total_cost,total_points, form, names,teams]
         df3.append(df2)
-    options = pd.DataFrame(df3,columns = ['price','points','formation','names'] )
+    options = pd.DataFrame(df3,columns = ['price','points','formation','names','teams'] )
     options.sort_values(by=['points'], ascending=False, inplace=True) 
-    options.reset_index(inplace=True)
-    options= options[0:10]     
+    options.reset_index(drop=True,inplace=True)
+    options= options[0:100]     
     return options   
 
 def results(defo,mido,striko,keepers_price, budget):
@@ -378,16 +339,43 @@ def results(defo,mido,striko,keepers_price, budget):
                     total_cost = row['price'] + row2['price']+row3['price']+ row4['price'] 
                     total_points = row['points'] + row2['points'] + row3['points'] + row4['point']
                     formation = [row['names'],row2['names'],row3['names'],row4['name']]
-                    output = [total_cost,total_points,formation]
+                    teams = [row['teams'],row2['teams'],row3['teams'],row4['team']]
+                    output = [total_cost,total_points,formation,teams]
+                    
+                
                     result.append(output)
     
-    result = pd.DataFrame(result, columns=['cost','points','formation'])
+    result = pd.DataFrame(result, columns=['cost','points','formation','teams'])
     
     
     # limit depends on formation... 
     result = result[result.cost < budget]
     result = result.sort_values(by=['points'], ascending=False)
-    result.reset_index(inplace=True)
+    result.reset_index(drop=True, inplace=True)
+    
+    remove =[]
+    for ind in range(len(result)):
+        team_t = result['teams'][ind] 
+        teamo =[]
+        for one in range(len(team_t[0])):
+            teamo.append(team_t[0][one])   
+        for one in range(len(team_t[1])):
+            teamo.append(team_t[1][one])
+        for one in range(len(team_t[2])):
+            teamo.append(team_t[2][one])
+        teamo.append(team_t[3])
+        unique = set(teamo)
+        
+        for id in unique:
+        #print(teamo.count(id))
+        
+            if (teamo.count(id) > 3):
+            #print (teamo.count(id))
+                remove.append(ind)
+                
+
+    result = result.drop(remove)    
+    result.reset_index(drop=True, inplace=True)
     return result
 
 #get cheapest 3
@@ -400,8 +388,8 @@ def cheapest3(defen):
 
 #calculate the maximum total price for each formation
 
-def maximum_r(a,b,c,defen,mid,strik):
-    subs_cost = 0
+def maximum_r(a,b,c,defen,mid,strik, keep):
+    subs_cost = keep['current_price'][0]
     subs = []
     if(a==0):
         subs_cost = 0
